@@ -2,114 +2,93 @@ import pandas as pd
 from neo4j import GraphDatabase
 import time
 
-# Connection details for your Neo4j Docker instance
+print("--- Phase 1: High-Performance Neo4j Batch Loader ---")
+
 URI = "neo4j://localhost:7687"
-AUTH = ("neo4j", "12345678") # Ensure this matches what you set in Docker
+AUTH = ("neo4j", "12345678")  # UPDATE THIS!
 
-def load_data():
-    print("Loading CSV files into memory...")
-    users_df = pd.read_csv('data/raw/users.csv')
-    agents_df = pd.read_csv('data/raw/agents.csv')
-    devices_df = pd.read_csv('data/raw/devices.csv')
-    institutions_df = pd.read_csv('data/raw/institutions.csv')
-    tx_df = pd.read_csv('data/raw/transactions.csv')
+def batch_load_nodes(tx, query, data, batch_size=10000):
+    """Loads nodes into Neo4j in optimized blocks to prevent memory crashes."""
+    for i in range(0, len(data), batch_size):
+        batch = data[i:i + batch_size]
+        tx.run(query, parameters={'batch': batch})
 
-    # Connect to Neo4j
+def load_graph_data():
+    print("Loading 100,000 raw transactions from CSV...")
+    df = pd.read_csv('data/raw/p2p_transfers.csv')
+
+    # 1. Extract Unique Entities
+    unique_users = pd.concat([df['sender_id'], df['receiver_id']]).unique()
+    users_data = [{'user_id': uid} for uid in unique_users]
+    
+    unique_agents = df['agent_id'].unique()
+    agents_data = [{'agent_id': aid} for aid in unique_agents]
+    
+    unique_devices = df['device_id'].unique()
+    devices_data = [{'device_id': did} for did in unique_devices]
+
+    # 2. Prepare Edges Data
+    # Convert timestamp string to a format Neo4j likes, or just keep as string for now
+    edges_data = df.to_dict('records')
+
     driver = GraphDatabase.driver(URI, auth=AUTH)
     
+    start_time = time.time()
     with driver.session() as session:
-        print("1. Loading Devices...")
-        session.run("""
-            UNWIND $rows AS row
-            MERGE (d:Device {device_id: row.device_id})
-            SET d.is_rooted = row.is_rooted
-        """, parameters={'rows': devices_df.to_dict('records')})
+        # --- LOAD NODES ---
+        print(f"Pushing {len(users_data)} Users to Neo4j...")
+        session.execute_write(batch_load_nodes, 
+            "UNWIND $batch AS row MERGE (u:User {user_id: row.user_id})", 
+            users_data)
 
-        print("2. Loading Institutions...")
-        session.run("""
-            UNWIND $rows AS row
-            MERGE (i:Institution {institution_id: row.institution_id})
-            SET i.name = row.name
-        """, parameters={'rows': institutions_df.to_dict('records')})
+        print(f"Pushing {len(agents_data)} Agents to Neo4j...")
+        session.execute_write(batch_load_nodes, 
+            "UNWIND $batch AS row MERGE (a:Agent {agent_id: row.agent_id})", 
+            agents_data)
 
-        print("3. Loading Users and linking to Devices...")
-        session.run("""
-            UNWIND $rows AS row
-            MERGE (u:User {user_id: row.user_id})
-            SET u.account_age_days = row.account_age_days,
-                u.kyc_level = row.kyc_level,
-                u.has_defaulted = row.has_defaulted
-            WITH u, row
-            MATCH (d:Device {device_id: row.device_id})
-            MERGE (u)-[:USES]->(d)
-        """, parameters={'rows': users_df.to_dict('records')})
+        print(f"Pushing {len(devices_data)} Devices to Neo4j...")
+        session.execute_write(batch_load_nodes, 
+            "UNWIND $batch AS row MERGE (d:Device {device_id: row.device_id})", 
+            devices_data)
 
-        print("4. Loading Agents...")
-        session.run("""
-            UNWIND $rows AS row
-            MERGE (a:Agent {agent_id: row.agent_id})
-            SET a.agent_type = row.agent_type,
-                a.location = row.location
-        """, parameters={'rows': agents_df.to_dict('records')})
+        # --- LOAD EDGES ---
+        print(f"Pushing {len(edges_data)} P2P Transfers & Connections to Neo4j... (This may take a minute)")
+        
+        # 1. The P2P Money Transfer
+        p2p_query = """
+        UNWIND $batch AS row
+        MATCH (sender:User {user_id: row.sender_id})
+        MATCH (receiver:User {user_id: row.receiver_id})
+        MERGE (sender)-[r:P2P_TRANSFER {
+            amount: toFloat(row.amount),
+            timestamp: row.timestamp,
+            is_fraud: toInteger(row.is_fraud),
+            fraud_scenario: row.fraud_scenario
+        }]->(receiver)
+        """
+        session.execute_write(batch_load_nodes, p2p_query, edges_data)
 
-        print("5. Loading Transactions (Edges)... This might take a minute.")
-        # P2P Transfers
-        p2p = tx_df[tx_df['tx_type'] == 'P2P_TRANSFER']
-        session.run("""
-            UNWIND $rows AS row
-            MATCH (s:User {user_id: row.sender_id})
-            MATCH (r:User {user_id: row.receiver_id})
-            MERGE (s)-[t:P2P_TRANSFER {transaction_id: row.transaction_id}]->(r)
-            SET t.amount = row.amount, 
-                t.timestamp = datetime(replace(row.timestamp, ' ', 'T')), 
-                t.is_fraud = row.is_fraud, 
-                t.fraud_scenario = row.fraud_scenario
-        """, parameters={'rows': p2p.to_dict('records')})
+        # 2. The Device Connection (Crucial for SIM Swap detection)
+        device_query = """
+        UNWIND $batch AS row
+        MATCH (sender:User {user_id: row.sender_id})
+        MATCH (device:Device {device_id: row.device_id})
+        MERGE (sender)-[:USES]->(device)
+        """
+        session.execute_write(batch_load_nodes, device_query, edges_data)
 
-        # Withdrawals
-        withdrawals = tx_df[tx_df['tx_type'] == 'WITHDRAWAL']
-        session.run("""
-            UNWIND $rows AS row
-            MATCH (s:User {user_id: row.sender_id})
-            MATCH (a:Agent {agent_id: row.receiver_id})
-            MERGE (s)-[t:WITHDRAWAL {transaction_id: row.transaction_id}]->(a)
-            SET t.amount = row.amount, t.timestamp = datetime(replace(row.timestamp, ' ', 'T')), t.is_fraud = row.is_fraud
-        """, parameters={'rows': withdrawals.to_dict('records')})
-
-        # Payments
-        payments = tx_df[tx_df['tx_type'] == 'PAYMENT']
-        session.run("""
-            UNWIND $rows AS row
-            MATCH (s:User {user_id: row.sender_id})
-            MATCH (a:Agent {agent_id: row.receiver_id})
-            MERGE (s)-[t:PAYMENT {transaction_id: row.transaction_id}]->(a)
-            SET t.amount = row.amount, t.timestamp = datetime(replace(row.timestamp, ' ', 'T')), t.is_fraud = row.is_fraud
-        """, parameters={'rows': payments.to_dict('records')})
-
-        # Loan Disbursements
-        loans = tx_df[tx_df['tx_type'] == 'LOAN_DISBURSEMENT']
-        session.run("""
-            UNWIND $rows AS row
-            MATCH (i:Institution {institution_id: row.sender_id})
-            MATCH (u:User {user_id: row.receiver_id})
-            MERGE (i)-[t:LOAN_DISBURSEMENT {transaction_id: row.transaction_id}]->(u)
-            SET t.amount = row.amount, t.timestamp = datetime(replace(row.timestamp, ' ', 'T')), t.is_fraud = row.is_fraud
-        """, parameters={'rows': loans.to_dict('records')})
-
-        # Reversal Requests
-        reversals = tx_df[tx_df['tx_type'] == 'REVERSAL_REQUEST']
-        session.run("""
-            UNWIND $rows AS row
-            MATCH (s:User {user_id: row.sender_id})
-            MATCH (r:User {user_id: row.receiver_id})
-            MERGE (s)-[t:REVERSAL_REQUEST {transaction_id: row.transaction_id}]->(r)
-            SET t.amount = row.amount, t.timestamp = datetime(replace(row.timestamp, ' ', 'T')), t.is_fraud = row.is_fraud
-        """, parameters={'rows': reversals.to_dict('records')})
+        # 3. The Agent Connection (Crucial for Cash-Out detection)
+        agent_query = """
+        UNWIND $batch AS row
+        MATCH (sender:User {user_id: row.sender_id})
+        MATCH (agent:Agent {agent_id: row.agent_id})
+        MERGE (sender)-[:INTERACTS_WITH]->(agent)
+        """
+        session.execute_write(batch_load_nodes, agent_query, edges_data)
 
     driver.close()
-    print("Graph construction complete! Your Neo4j database is fully populated.")
+    elapsed = time.time() - start_time
+    print(f"\nGraph Database successfully built in {elapsed:.2f} seconds!")
 
 if __name__ == "__main__":
-    start_time = time.time()
-    load_data()
-    print(f"Execution time: {round(time.time() - start_time, 2)} seconds")
+    load_graph_data()
