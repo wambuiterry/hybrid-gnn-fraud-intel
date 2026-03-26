@@ -2,16 +2,19 @@ import pandas as pd
 from neo4j import GraphDatabase
 import time
 
-print("--- Phase 1: High-Performance Neo4j Batch Loader ---")
+print(" Phase 1: High-Performance Neo4j Batch Loader ")
 
 URI = "neo4j://localhost:7687"
-AUTH = ("neo4j", "12345678")  # UPDATE THIS!
+AUTH = ("neo4j", "12345678")  # 
 
-def batch_load_nodes(tx, query, data, batch_size=10000):
-    """Loads nodes into Neo4j in optimized blocks to prevent memory crashes."""
-    for i in range(0, len(data), batch_size):
+def batch_load_nodes(tx, query, data, batch_size=2000):
+    """Loads nodes in blocks and prints real-time progress to prevent freezing."""
+    total = len(data)
+    for i in range(0, total, batch_size):
         batch = data[i:i + batch_size]
         tx.run(query, parameters={'batch': batch})
+        # Print a progress update to the terminal!
+        print(f"   -> Processed {min(i + batch_size, total)} / {total} records...")
 
 def load_graph_data():
     print("Loading 100,000 raw transactions from CSV...")
@@ -35,7 +38,7 @@ def load_graph_data():
     
     start_time = time.time()
     with driver.session() as session:
-        # --- LOAD NODES ---
+        # LOAD NODES 
         print(f"Pushing {len(users_data)} Users to Neo4j...")
         session.execute_write(batch_load_nodes, 
             "UNWIND $batch AS row MERGE (u:User {user_id: row.user_id})", 
@@ -51,7 +54,7 @@ def load_graph_data():
             "UNWIND $batch AS row MERGE (d:Device {device_id: row.device_id})", 
             devices_data)
 
-        # --- LOAD EDGES ---
+        #  LOAD EDGES 
         print(f"Pushing {len(edges_data)} P2P Transfers & Connections to Neo4j... (This may take a minute)")
         
         # 1. The P2P Money Transfer
