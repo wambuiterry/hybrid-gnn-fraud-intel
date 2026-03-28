@@ -17,7 +17,7 @@ def mpesa_ai_analyst(row):
     amount = row.get('amount', row.get('Amount', 500))
     velocity = row.get('transactions_last_24hr', 1)
     
-    # --- KENYAN CASE STUDY LOGIC ---
+    #  KENYAN CASE STUDY LOGIC 
     
     # RULE 1: The "M-Pesa Reversal / Kamiti" Scam (Micro-Scam)
     # Context: If the Hybrid Model is leaning toward fraud (>50%), and the amount 
@@ -51,8 +51,8 @@ def mpesa_ai_analyst(row):
 print("AI Agent is applying Kenyan behavioral business logic to the Hybrid output...")
 queue_df['AI_Decision'] = queue_df.apply(mpesa_ai_analyst, axis=1)
 
-# --- GENERATE THE DETAILED TOPOLOGY TABLE ---
-print("\n--- AI Analyst Resolution by Fraud Topology ---")
+#  GENERATE THE DETAILED TOPOLOGY TABLE 
+print("\n AI Analyst Resolution by Fraud Topology ")
 print(f"{'Fraud Topology':<18} | {'Total Queue'} | {'Actual Fraud Inside'} | {'False Alarms Cleared'} | {'Fraud Caught'} | {'Sent to Human'}")
 print("-" * 115)
 
@@ -76,8 +76,8 @@ for topo in topologies:
     
     print(f"{topo:<18} | {total_in_queue:<11} | {actual_fraud_inside:<19} | {false_alarms_cleared:<20} | {fraud_caught:<12} | {sent_to_human}")
 
-# --- FINAL SYSTEM IMPACT ---
-print("\n--- Final System Impact ---")
+#  FINAL SYSTEM IMPACT 
+print("\n Final System Impact ")
 total_false_alarms_cleared = len(queue_df[(queue_df['AI_Decision'] == 'AUTO_CLEARED_SAFE') & (queue_df['Actual'] == 0)])
 total_fraud_caught = len(queue_df[(queue_df['AI_Decision'] == 'CONFIRMED_FRAUD') & (queue_df['Actual'] == 1)])
 remaining_human_work = len(queue_df[queue_df['AI_Decision'] == 'REQUIRE_HUMAN'])
@@ -85,4 +85,4 @@ remaining_human_work = len(queue_df[queue_df['AI_Decision'] == 'REQUIRE_HUMAN'])
 print(f"-> The AI Agent successfully verified and AUTO-CLEARED {total_false_alarms_cleared} innocent users.")
 print(f"-> The AI Agent confidently CONFIRMED {total_fraud_caught} additional fraudsters.")
 print(f"-> The human analyst workload was reduced to only {remaining_human_work} complex cases.")
-print("-> Architecture Complete: The Hybrid Model detects, the AI Agent refines.")
+print("Architecture Complete: The Hybrid Model detects, the AI Agent refines.")
