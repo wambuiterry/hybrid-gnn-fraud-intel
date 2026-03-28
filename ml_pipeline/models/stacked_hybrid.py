@@ -4,7 +4,7 @@ from xgboost import XGBClassifier
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import classification_report, roc_auc_score
 
-print(" Group 15: STACKED HYBRID GNN-XGBoost Evaluation ")
+print("Group 15: STACKED HYBRID GNN-XGBoost Evaluation ")
 
 # 1. Load the Data
 print("Loading Tabular features...")
@@ -13,8 +13,7 @@ df = pd.read_csv('data/processed/final_model_data.csv')
 print("Loading GNN Probabilities (The Stacked Feature)...")
 probs_df = pd.read_csv('data/processed/gnn_probabilities.csv')
 
-# 2. STACKING: Because the PyTorch graph edges perfectly match the CSV rows, 
-# we can just glue the probability column directly to the dataframe.
+# 2. STACKING
 hybrid_df = pd.concat([df, probs_df], axis=1)
 
 # 3. Prepare for Machine Learning
@@ -34,17 +33,17 @@ print(f"Training TUNED STACKED XGBoost on {len(X_train)} transactions...")
 pos_weight = (len(y_train) - sum(y_train)) / sum(y_train)
 
 stacked_model = XGBClassifier(
-    n_estimators=150,           # Giving it more trees to learn complex relationships
-    max_depth=4,                # THE FIX: Shallower trees prevent it from over-relying on exact amounts
-    learning_rate=0.05,         # Slower, more careful learning
-    colsample_bytree=0.6,       # THE FIX: Randomly hide 40% of columns so it is FORCED to use the GNN score
-    scale_pos_weight=pos_weight * 1.5, # THE FIX: Tell XGBoost that missing a fraudster is 1.5x worse than normal
+    n_estimators=150,           
+    max_depth=4,                
+    learning_rate=0.05,         
+    colsample_bytree=0.6,       
+    scale_pos_weight=pos_weight * 1.5, 
     random_state=42,
     eval_metric='logloss'
 )
 stacked_model.fit(X_train, y_train)
 
-# 6. Evaluation
+# 6. Evaluation: PURE ML PERFORMANCE (Threshold = 0.50)
 print("\n STACKED Model Detection Analysis ")
 predictions = stacked_model.predict(X_test)
 probabilities = stacked_model.predict_proba(X_test)[:, 1]
@@ -68,6 +67,44 @@ for scenario in actual_fraud['Scenario'].unique():
     recall = (caught / total_cases) * 100 if total_cases > 0 else 0.0
     print(f"{scenario:<20} | {caught:<17} | {missed:<18} | {recall:.1f}%")
 
-print("\n Overall Performance :")
+print("\nOverall Performance:")
 print(classification_report(y_test, predictions, target_names=['Safe (0)', 'Fraud (1)']))
 print(f"STACKED ROC-AUC Score: {roc_auc_score(y_test, probabilities):.4f}")
+
+# 7. Evaluation: THE TRAFFIC LIGHT SYSTEM (Human-in-the-Loop)
+print("\nSTACKED Model: Business Logic")
+business_decisions = []
+for prob in probabilities:
+    if prob >= 0.85:
+        business_decisions.append('AUTO_FREEZE')
+    elif prob >= 0.25:
+        business_decisions.append('MANUAL_REVIEW')
+    else:
+        business_decisions.append('SAFE')
+
+results_biz = pd.DataFrame({
+    'Actual': y_test,
+    'Probability': probabilities,
+    'Decision': business_decisions
+})
+
+actual_fraud_biz = results_biz[results_biz['Actual'] == 1]
+total_fraud = len(actual_fraud_biz)
+
+auto_caught = len(actual_fraud_biz[actual_fraud_biz['Decision'] == 'AUTO_FREEZE'])
+analyst_caught = len(actual_fraud_biz[actual_fraud_biz['Decision'] == 'MANUAL_REVIEW'])
+missed_fraud = len(actual_fraud_biz[actual_fraud_biz['Decision'] == 'SAFE'])
+
+print(f"Total Actual Fraud Cases in Test Set: {total_fraud}")
+print("-" * 65)
+print(f" AUTO-FREEZE (High Precision): {auto_caught} cases caught instantly.")
+print(f" ANALYST QUEUE (High Recall) : {analyst_caught} cases sent to human review.")
+print(f" MISSED (False Negatives)    : {missed_fraud} cases escaped.")
+print("-" * 65)
+
+system_recall = ((auto_caught + analyst_caught) / total_fraud) * 100
+print(f"Total SYSTEM Recall (Model + Analyst): {system_recall:.1f}%")
+
+safe_in_review = len(results_biz[(results_biz['Actual'] == 0) & (results_biz['Decision'] == 'MANUAL_REVIEW')])
+print(f"\nAnalyst Workload: There are {safe_in_review} innocent transactions mixed into the Review Queue.")
+print("The human analyst acts as the ultimate filter to protect Precision!")
