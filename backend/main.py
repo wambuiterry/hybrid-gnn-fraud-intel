@@ -39,7 +39,7 @@ except FileNotFoundError:
     print(f"Warning: Model file not found at {MODEL_PATH}. API will fail on prediction.")
 
 
-# --- NEW: SQLITE DATABASE INITIALIZATION ---
+#  SQLITE DATABASE INITIALIZATION 
 def init_db():
     """Creates a local SQLite database to store transactions for the dashboard."""
     conn = sqlite3.connect("fraud_intel.db")
@@ -160,7 +160,8 @@ async def predict_fraud(tx: TransactionRequest):
 
     # 3. Model Inference
     try:
-        risk_score = hybrid_model.predict_proba(features)[0][1]
+        # Wrap it in float() to convert from numpy to native Python float
+        risk_score = float(hybrid_model.predict_proba(features)[0][1])
         print(f"✅ XGBoost Calculation Success! Real Risk Score: {risk_score}")
     except Exception as e:
          print(f"❌ XGBoost Feature Mismatch Error: {str(e)}") 
