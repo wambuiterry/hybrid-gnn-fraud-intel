@@ -97,7 +97,7 @@ export default function Transactions() {
             
             <button type="submit" disabled={loading} 
               className="w-full mt-6 bg-brandPrimary hover:bg-indigo-700 text-white font-bold py-3 px-4 rounded-lg transition-colors disabled:bg-indigo-300">
-              {loading ? 'Analyzing Graph & Running Models...' : 'Process Transaction'}
+              {loading ? 'Running Stacked Hybrid Engine...' : 'Process Transaction'}
             </button>
           </form>
           {error && <p className="text-red-500 text-sm mt-4 font-medium">{error}</p>}
@@ -119,7 +119,7 @@ export default function Transactions() {
           {loading && (
             <div className="flex-1 flex flex-col items-center justify-center text-brandPrimary animate-pulse">
               <Activity size={48} className="mb-4" />
-              <p className="font-medium">Querying Neo4j & Running Stacked Hybrid Model...</p>
+              <p className="font-medium">Querying Graph & Running Stacked Hybrid...</p>
             </div>
           )}
 
