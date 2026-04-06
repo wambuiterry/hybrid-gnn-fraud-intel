@@ -119,7 +119,7 @@ export default function Transactions() {
           {loading && (
             <div className="flex-1 flex flex-col items-center justify-center text-brandPrimary animate-pulse">
               <Activity size={48} className="mb-4" />
-              <p className="font-medium">Querying Neo4j & Running XGBoost...</p>
+              <p className="font-medium">Querying Neo4j & Running Stacked Hybrid Model...</p>
             </div>
           )}
 
