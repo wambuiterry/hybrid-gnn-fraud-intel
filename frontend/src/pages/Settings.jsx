@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { User, Bell, Shield, Database, Mail, Key, Copy, RefreshCw, Lock } from 'lucide-react';
+import { User, Bell, Shield, Database, Mail, Key, Copy, RefreshCw, Lock, Plus, X, Edit2, Check } from 'lucide-react';
 
 export default function Settings() {
   const [activeTab, setActiveTab] = useState('Profile');
@@ -15,6 +15,13 @@ export default function Settings() {
     { id: 1, name: 'Production API Key', key: 'sk_live_51ABCD...', created: '2026-03-15', lastUsed: '2026-04-09' },
     { id: 2, name: 'Development API Key', key: 'sk_test_51EFGH...', created: '2026-04-01', lastUsed: '2026-04-08' }
   ]);
+  const [emails, setEmails] = useState([
+    { id: 1, email: 'analyst@fraudguard.com', isPrimary: true },
+    { id: 2, email: 'secondary@fraudguard.com', isPrimary: false }
+  ]);
+  const [newEmail, setNewEmail] = useState('');
+  const [editingEmailId, setEditingEmailId] = useState(null);
+  const [editingEmailText, setEditingEmailText] = useState('');
 
   const menuItems = [
     { name: 'Profile', icon: User },
@@ -237,40 +244,139 @@ export default function Settings() {
           {activeTab === 'Email Preferences' && (
             <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-6">
               <h2 className="text-lg font-bold text-gray-900 mb-6 flex items-center gap-2">
-                <Mail size={20} className="text-brandPrimary" /> Email Preferences
+                <Mail size={20} className="text-brandPrimary" /> Email Management
               </h2>
               
-              <div className="space-y-4">
-                <div className="flex justify-between items-center p-4 border border-gray-200 rounded-lg">
-                  <div>
-                    <p className="font-medium text-gray-900">High-Risk Transaction Alerts</p>
-                    <p className="text-sm text-gray-500">Email sent immediately</p>
+              <div className="space-y-6">
+                {/* Add New Email */}
+                <div className="border border-gray-200 p-4 rounded-lg bg-gray-50">
+                  <p className="text-sm font-bold text-gray-900 mb-3">Add New Email Address</p>
+                  <div className="flex gap-2">
+                    <input
+                      type="email"
+                      value={newEmail}
+                      onChange={(e) => setNewEmail(e.target.value)}
+                      placeholder="analyst@example.com"
+                      className="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brandPrimary outline-none text-gray-900"
+                    />
+                    <button
+                      onClick={() => {
+                        if (newEmail && newEmail.includes('@')) {
+                          setEmails([...emails, { id: Math.max(...emails.map(e => e.id), 0) + 1, email: newEmail, isPrimary: false }]);
+                          setNewEmail('');
+                        }
+                      }}
+                      className="bg-brandPrimary hover:bg-indigo-700 text-white px-4 py-2 rounded-lg font-medium transition-colors flex items-center gap-2"
+                    >
+                      <Plus size={16} /> Add
+                    </button>
                   </div>
-                  <input type="checkbox" defaultChecked className="w-5 h-5 accent-brandPrimary" />
                 </div>
 
-                <div className="flex justify-between items-center p-4 border border-gray-200 rounded-lg">
-                  <div>
-                    <p className="font-medium text-gray-900">Daily Summary Report</p>
-                    <p className="text-sm text-gray-500">Sent at 06:00 AM daily</p>
-                  </div>
-                  <input type="checkbox" defaultChecked className="w-5 h-5 accent-brandPrimary" />
+                {/* Email List */}
+                <div className="space-y-3">
+                  <p className="text-sm font-bold text-gray-800">Active Email Addresses</p>
+                  {emails.map(email => (
+                    <div key={email.id} className="flex items-center justify-between p-4 border border-gray-200 rounded-lg hover:shadow-md transition-shadow">
+                      <div className="flex items-center gap-3 flex-1">
+                        {editingEmailId === email.id ? (
+                          <input
+                            type="email"
+                            value={editingEmailText}
+                            onChange={(e) => setEditingEmailText(e.target.value)}
+                            className="flex-1 px-3 py-1 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brandPrimary outline-none text-gray-900"
+                          />
+                        ) : (
+                          <div>
+                            <p className="font-mono text-gray-900 font-medium">{email.email}</p>
+                            {email.isPrimary && (
+                              <span className="text-xs text-green-600 font-bold">Primary Email</span>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                      <div className="flex gap-2 ml-4">
+                        {editingEmailId === email.id ? (
+                          <>
+                            <button
+                              onClick={() => {
+                                const updated = emails.map(e => 
+                                  e.id === email.id ? {...e, email: editingEmailText} : e
+                                );
+                                setEmails(updated);
+                                setEditingEmailId(null);
+                              }}
+                              className="text-green-600 hover:text-green-700 font-medium"
+                            >
+                              <Check size={16} />
+                            </button>
+                            <button
+                              onClick={() => setEditingEmailId(null)}
+                              className="text-gray-400 hover:text-gray-600 font-medium"
+                            >
+                              <X size={16} />
+                            </button>
+                          </>
+                        ) : (
+                          <>
+                            <button
+                              onClick={() => {
+                                setEditingEmailId(email.id);
+                                setEditingEmailText(email.email);
+                              }}
+                              className="text-brandPrimary hover:text-indigo-700 font-medium"
+                            >
+                              <Edit2 size={16} />
+                            </button>
+                            <button
+                              onClick={() => setEmails(emails.filter(e => e.id !== email.id))}
+                              className="text-red-600 hover:text-red-700 font-medium"
+                            >
+                              <X size={16} />
+                            </button>
+                          </>
+                        )}
+                      </div>
+                    </div>
+                  ))}
                 </div>
 
-                <div className="flex justify-between items-center p-4 border border-gray-200 rounded-lg">
-                  <div>
-                    <p className="font-medium text-gray-900">Weekly Compliance Report</p>
-                    <p className="text-sm text-gray-500">Sent on Monday mornings</p>
-                  </div>
-                  <input type="checkbox" defaultChecked className="w-5 h-5 accent-brandPrimary" />
-                </div>
+                {/* Email Notification Preferences */}
+                <div className="border-t border-gray-200 pt-6">
+                  <p className="text-sm font-bold text-gray-800 mb-4">Notification Delivery Preferences</p>
+                  <div className="space-y-3">
+                    <div className="flex justify-between items-center p-4 border border-gray-200 rounded-lg">
+                      <div>
+                        <p className="font-medium text-gray-900">High-Risk Transaction Alerts</p>
+                        <p className="text-sm text-gray-500">Email sent immediately</p>
+                      </div>
+                      <input type="checkbox" defaultChecked className="w-5 h-5 accent-brandPrimary" />
+                    </div>
 
-                <div className="flex justify-between items-center p-4 border border-gray-200 rounded-lg">
-                  <div>
-                    <p className="font-medium text-gray-900">System Maintenance Notifications</p>
-                    <p className="text-sm text-gray-500">Sent 24 hours before maintenance</p>
+                    <div className="flex justify-between items-center p-4 border border-gray-200 rounded-lg">
+                      <div>
+                        <p className="font-medium text-gray-900">Daily Summary Report</p>
+                        <p className="text-sm text-gray-500">Sent at 06:00 AM daily</p>
+                      </div>
+                      <input type="checkbox" defaultChecked className="w-5 h-5 accent-brandPrimary" />
+                    </div>
+
+                    <div className="flex justify-between items-center p-4 border border-gray-200 rounded-lg">
+                      <div>
+                        <p className="font-medium text-gray-900">Weekly Compliance Report</p>
+                        <p className="text-sm text-gray-500">Sent on Monday mornings</p>
+                      </div>
+                      <input type="checkbox" defaultChecked className="w-5 h-5 accent-brandPrimary" />
+                    </div>
+
+                    <div className="flex justify-between items-center p-4 border border-gray-200 rounded-lg">
+                      <div>
+                        <p className="font-medium text-gray-900">System Maintenance Notifications</p>
+                        <p className="text-sm text-gray-500">Sent 24 hours before maintenance</p>
+                      </div>
+                      <input type="checkbox" className="w-5 h-5 accent-brandPrimary" />
+                    </div>
                   </div>
-                  <input type="checkbox" className="w-5 h-5 accent-brandPrimary" />
                 </div>
               </div>
             </div>
