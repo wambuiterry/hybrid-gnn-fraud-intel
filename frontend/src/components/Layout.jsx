@@ -11,6 +11,7 @@ export default function Layout({ children }) {
     { name: 'Fraud Network', path: '/network', icon: Network },
     { name: 'Alerts', path: '/alerts', icon: Bell },
     { name: 'Models', path: '/models', icon: BarChart3 },
+    { name: 'AI Bot', path: '/ai-bot', icon: User },
     { name: 'Reports', path: '/reports', icon: FileText },
     { name: 'Settings', path: '/settings', icon: Settings },
   ];

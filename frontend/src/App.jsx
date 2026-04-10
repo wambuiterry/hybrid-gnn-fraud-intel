@@ -5,6 +5,7 @@ import Transactions from './pages/Transaction';
 import FraudNetwork from './pages/FraudNetwork'; 
 import Alerts from './pages/Alerts';
 import Models from './pages/Models';
+import AIBot from './pages/AIBot';
 import Reports from './pages/Reports';
 import Settings from './pages/Settings';
 
@@ -20,6 +21,7 @@ function App() {
           <Route path="/network" element={<FraudNetwork />} />
           <Route path="/alerts" element={<Alerts />} />
           <Route path="/models" element={<Models />} />
+          <Route path="/ai-bot" element={<AIBot />} />
           <Route path="/reports" element={<Reports />} />
           <Route path="/settings" element={<Settings />} />
           <Route path="*" element={<div>Page under construction</div>} />        </Routes>
