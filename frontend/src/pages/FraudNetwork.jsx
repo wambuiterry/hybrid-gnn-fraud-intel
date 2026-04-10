@@ -17,14 +17,30 @@ export default function FraudNetwork() {
   const [loadingLive, setLoadingLive] = useState(false);
 
   useEffect(() => {
-    if (baselineContainerRef.current && liveContainerRef.current) {
-      const baselineWidth = baselineContainerRef.current.offsetWidth;
-      const liveWidth = liveContainerRef.current.offsetWidth;
-      const height = Math.max(baselineContainerRef.current.offsetHeight, liveContainerRef.current.offsetHeight);
-      // Use the width from either container
-      const width = baselineWidth || liveWidth || 600;
-      setDimensions({ width, height: Math.max(height, 500) });
-    }
+    const updateDimensions = () => {
+      if (baselineContainerRef.current && liveContainerRef.current) {
+        const baselineWidth = baselineContainerRef.current.clientWidth;
+        const liveWidth = liveContainerRef.current.clientWidth;
+        const baselineHeight = baselineContainerRef.current.clientHeight;
+        const liveHeight = liveContainerRef.current.clientHeight;
+        
+        // Use actual rendered dimensions
+        const width = Math.max(baselineWidth, liveWidth, 400);
+        const height = Math.max(baselineHeight, liveHeight, 500);
+        
+        setDimensions({ width, height });
+      }
+    };
+
+    // Initial calculation
+    updateDimensions();
+
+    // Recalculate on window resize
+    const resizeObserver = new ResizeObserver(updateDimensions);
+    if (baselineContainerRef.current) resizeObserver.observe(baselineContainerRef.current);
+    if (liveContainerRef.current) resizeObserver.observe(liveContainerRef.current);
+
+    return () => resizeObserver.disconnect();
   }, [activeCase]);
 
   // Fetch Live Neo4j Data and set up pulse animations
