@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import axios from 'axios';
-import { ShieldAlert, ShieldCheck, Activity, Search, Upload, BarChart3 } from 'lucide-react';
+import { ShieldAlert, ShieldCheck, Activity, Search, Upload, BarChart3, Zap } from 'lucide-react';
 
 export default function Transactions() {
   // State to hold the form data
@@ -16,6 +16,8 @@ export default function Transactions() {
   // File upload state
   const [uploadedFile, setUploadedFile] = useState(null);
   const [extractedTransactions, setExtractedTransactions] = useState([]);
+  const [selectedUploadedTx, setSelectedUploadedTx] = useState(null);
+  const [uploadedTxComparison, setUploadedTxComparison] = useState(null);
   const [showComparison, setShowComparison] = useState(false);
 
   // State to hold the predictions
@@ -88,6 +90,30 @@ export default function Transactions() {
     setLoading(false);
   };
 
+  // Test selected uploaded transaction through all 3 models
+  const handleTestUploadedTransaction = async () => {
+    if (!selectedUploadedTx) return;
+    
+    setLoading(true);
+    setError(null);
+    setUploadedTxComparison(null);
+    
+    try {
+      // Run through all 3 models
+      const comparisonResponse = await axios.post('http://127.0.0.1:8000/run-transaction-comparison', {
+        ...selectedUploadedTx,
+        amount: parseFloat(selectedUploadedTx.amount),
+        transactions_last_24hr: parseInt(selectedUploadedTx.transactions_last_24hr || 1),
+        hour: parseInt(selectedUploadedTx.hour || 14)
+      });
+      setUploadedTxComparison(comparisonResponse.data);
+    } catch (err) {
+      console.error(err);
+      setError('Failed to run models on uploaded transaction.');
+    }
+    setLoading(false);
+  };
+
   // Helper function to style the badge based on the AI's decision
   const getBadgeStyle = (decision) => {
     if (decision === 'AUTO_CLEARED_SAFE') return 'bg-green-100 text-green-800 border-green-200';
@@ -138,7 +164,114 @@ export default function Transactions() {
         )}
       </div>
 
-      {/* TRANSACTION SIMULATOR & RESULTS */}
+      {/* TEST UPLOADED TRANSACTIONS SECTION */}
+      {extractedTransactions.length > 0 && (
+        <div className="bg-white p-6 rounded-xl shadow-sm border border-purple-100">
+          <h2 className="text-lg font-semibold flex items-center gap-2 mb-6 border-b pb-4">
+            <Zap className="text-purple-600" size={20} /> 
+            Test Uploaded Transactions Through All 3 Models
+          </h2>
+          
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            {/* Transaction Selector */}
+            <div>
+              <label className="text-sm font-medium text-gray-700 mb-3 block">Select Transaction to Test</label>
+              <div className="space-y-2 max-h-96 overflow-y-auto">
+                {extractedTransactions.map((tx, idx) => (
+                  <button
+                    key={idx}
+                    onClick={() => setSelectedUploadedTx(tx)}
+                    className={`w-full text-left p-3 rounded-lg border-2 transition-colors ${
+                      selectedUploadedTx === tx
+                        ? 'border-purple-500 bg-purple-50'
+                        : 'border-gray-200 bg-gray-50 hover:border-purple-300'
+                    }`}
+                  >
+                    <p className="font-semibold text-sm text-gray-900">
+                      KES {parseFloat(tx.amount).toLocaleString('en-US', { maximumFractionDigits: 2 })}
+                    </p>
+                    <p className="text-xs text-gray-600">
+                      {tx.sender_id || 'USER_?'} → {tx.receiver_id || 'USER_?'}
+                    </p>
+                  </button>
+                ))}
+              </div>
+              
+              <button
+                onClick={handleTestUploadedTransaction}
+                disabled={!selectedUploadedTx || loading}
+                className="w-full mt-4 bg-purple-600 hover:bg-purple-700 text-white font-bold py-3 px-4 rounded-lg transition-colors disabled:bg-purple-300"
+              >
+                {loading ? 'Running Models...' : 'Test Selected Tx'}
+              </button>
+            </div>
+
+            {/* Results for Uploaded Transaction */}
+            <div className="lg:col-span-2">
+              {!uploadedTxComparison && !loading && (
+                <div className="flex items-center justify-center text-gray-400 border-2 border-dashed border-gray-200 rounded-lg p-8 h-full">
+                  <div className="text-center">
+                    <Activity size={40} className="mx-auto mb-3 text-gray-300" />
+                    <p className="text-sm">Select a transaction and run it through the models</p>
+                  </div>
+                </div>
+              )}
+
+              {loading && (
+                <div className="flex flex-col items-center justify-center text-purple-600 animate-pulse h-full">
+                  <Activity size={40} className="mb-3" />
+                  <p className="font-medium text-sm">Running all 3 models...</p>
+                </div>
+              )}
+
+              {uploadedTxComparison && (
+                <div className="space-y-4">
+                  {/* Model Scores */}
+                  <div className="grid grid-cols-3 gap-3">
+                    {[
+                      { name: 'XGBoost', score: uploadedTxComparison.xgboost_score },
+                      { name: 'GNN', score: uploadedTxComparison.gnn_score },
+                      { name: 'Hybrid', score: uploadedTxComparison.hybrid_score }
+                    ].map(m => (
+                      <div key={m.name} className={`p-4 rounded-lg border-2 ${
+                        m.score > 0.7 ? 'border-red-200 bg-red-50' :
+                        m.score > 0.4 ? 'border-orange-200 bg-orange-50' :
+                        'border-green-200 bg-green-50'
+                      }`}>
+                        <p className="text-xs font-semibold text-gray-600 mb-1">{m.name}</p>
+                        <p className="text-2xl font-bold" style={{
+                          color: m.score > 0.7 ? '#dc2626' : m.score > 0.4 ? '#ea580c' : '#16a34a'
+                        }}>
+                          {(m.score * 100).toFixed(0)}%
+                        </p>
+                      </div>
+                    ))}
+                  </div>
+
+                  {/* Consensus */}
+                  <div className={`p-4 rounded-lg border-l-4 ${
+                    uploadedTxComparison.consensus === 'FRAUD'
+                      ? 'border-l-red-500 bg-red-50'
+                      : 'border-l-green-500 bg-green-50'
+                  }`}>
+                    <p className="text-xs font-semibold text-gray-600 mb-1">Consensus Verdict</p>
+                    <p className={`text-lg font-bold ${
+                      uploadedTxComparison.consensus === 'FRAUD'
+                        ? 'text-red-600'
+                        : 'text-green-600'
+                    }`}>
+                      {uploadedTxComparison.consensus}
+                    </p>
+                    <p className="text-xs text-gray-600 mt-1">
+                      {uploadedTxComparison.models_flagged}/3 models flagged this
+                    </p>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
         
         {/* LEFT COLUMN: The Simulator Form */}
