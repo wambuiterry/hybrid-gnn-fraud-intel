@@ -1,14 +1,27 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import axios from 'axios';
 import { MessageCircle, BarChart3, Zap, HelpCircle, BookOpen } from 'lucide-react';
 
+const AI_EXPLAIN_CACHE_KEY = 'aiBot:modelExplanations';
+
+const readCache = () => {
+  try {
+    return JSON.parse(localStorage.getItem(AI_EXPLAIN_CACHE_KEY) || '{}');
+  } catch {
+    return {};
+  }
+};
+
 export default function AIBot() {
+  const modelOptions = ['xgboost', 'gnn', 'stacked_hybrid'];
   const [selectedModel, setSelectedModel] = useState('stacked_hybrid');
   const [explanation, setExplanation] = useState(null);
   const [loading, setLoading] = useState(false);
   const [selectedTransaction, setSelectedTransaction] = useState(null);
   const [txExplanation, setTxExplanation] = useState(null);
   const [txLoading, setTxLoading] = useState(false);
+  const [explanationCache, setExplanationCache] = useState(() => readCache());
+  const requestIdRef = useRef(0);
 
   const modelStrengths = explanation?.strengths || [];
   const modelWeaknesses = explanation?.weaknesses || [];
@@ -18,17 +31,54 @@ export default function AIBot() {
 
   // Fetch model explanation
   useEffect(() => {
-    setLoading(true);
+    const requestId = ++requestIdRef.current;
+    const cachedExplanation = explanationCache[selectedModel];
+
+    if (cachedExplanation) {
+      setExplanation(cachedExplanation);
+      setLoading(false);
+    } else {
+      setLoading(true);
+    }
+
     axios.get(`http://127.0.0.1:8000/ai-explain-model/${selectedModel}`)
       .then(res => {
+        if (requestId !== requestIdRef.current) return;
         setExplanation(res.data);
+        const nextCache = {
+          ...readCache(),
+          [selectedModel]: res.data,
+        };
+        localStorage.setItem(AI_EXPLAIN_CACHE_KEY, JSON.stringify(nextCache));
+        setExplanationCache(nextCache);
         setLoading(false);
       })
       .catch(err => {
+        if (requestId !== requestIdRef.current) return;
         console.error('Error fetching explanation:', err);
         setLoading(false);
       });
   }, [selectedModel]);
+
+  useEffect(() => {
+    const cached = readCache();
+    modelOptions
+      .filter((model) => !cached[model])
+      .forEach((model) => {
+        axios.get(`http://127.0.0.1:8000/ai-explain-model/${model}`)
+          .then((res) => {
+            const nextCache = {
+              ...readCache(),
+              [model]: res.data,
+            };
+            localStorage.setItem(AI_EXPLAIN_CACHE_KEY, JSON.stringify(nextCache));
+            setExplanationCache(nextCache);
+          })
+          .catch((err) => {
+            console.error(`Error prefetching ${model} explanation:`, err);
+          });
+      });
+  }, []);
 
   const handleExplainTransaction = async (txId) => {
     if (!txId) return;
