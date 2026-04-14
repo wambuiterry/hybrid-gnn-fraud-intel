@@ -148,6 +148,11 @@ export default function TestCaseSampler({ onCaseSelect }) {
                 <div className="text-sm text-gray-700">
                   {currentPrediction.explanation}
                 </div>
+                {currentPrediction.topology_explanation && (
+                  <div className="mt-2 text-xs text-indigo-700 bg-indigo-50 border border-indigo-200 rounded p-2">
+                    {currentPrediction.topology_explanation}
+                  </div>
+                )}
                 <div className="mt-2 text-xs text-gray-600">
                   True Label: {currentPrediction.true_label === 1 ? 'FRAUD' : 'LEGITIMATE'} •{' '}
                   {currentPrediction.correct ? '✓ Correct' : '✗ Incorrect'}
