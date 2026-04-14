@@ -1241,23 +1241,39 @@ def generate_model_explanation(model_type: str, metrics: dict, topology_results:
     
     if model_type == "xgboost":
         if topology_results.get("fast_cashout", {}).get("recall", 0) > 0.85:
-            strengths.append("⚡ Excellent at velocity-based fraud (89.7% recall on fast_cashout)")
+            strengths.append(
+                f"⚡ Excellent at velocity-based fraud ({topology_results['fast_cashout']['recall']:.1%} recall on fast_cashout)"
+            )
         if topology_results.get("business_fraud", {}).get("recall", 0) > 0.90:
-            strengths.append("💼 Strong on business till patterns (98.9% recall)")
+            strengths.append(
+                f"💼 Strong on business till patterns ({topology_results['business_fraud']['recall']:.1%} recall)"
+            )
         if topology_results.get("fraud_ring", {}).get("recall", 0) < 0.60:
-            weaknesses.append("❌ Struggles with fraud rings (only 47.9% recall) - lacks graph topology")
+            weaknesses.append(
+                f"❌ Struggles with fraud rings (only {topology_results['fraud_ring']['recall']:.1%} recall) - lacks graph topology"
+            )
         if topology_results.get("mule_sim_swap", {}).get("recall", 0) < 0.30:
-            weaknesses.append("❌ Poor at SIM swap detection (15.8% recall) - can't see shared devices in network")
+            weaknesses.append(
+                f"❌ Poor at SIM swap detection ({topology_results['mule_sim_swap']['recall']:.1%} recall) - can't see shared devices in network"
+            )
             
     elif model_type == "gnn":
         if topology_results.get("fraud_ring", {}).get("recall", 0) > 0.40:
-            strengths.append("🔗 Detects fraud rings better than tabular (44.2% vs 47.9% - network signals help)")
+            strengths.append(
+                f"🔗 Detects fraud rings through topology ({topology_results['fraud_ring']['recall']:.1%} recall)"
+            )
         if topology_results.get("business_fraud", {}).get("recall", 0) > 0.95:
-            strengths.append("🌐 Excellent at densification patterns (100% recall)")
+            strengths.append(
+                f"🌐 Excellent at dense fraud structures ({topology_results['business_fraud']['recall']:.1%} recall)"
+            )
         if topology_results.get("mule_sim_swap", {}).get("recall", 0) < 0.50:
-            weaknesses.append("❌ Struggles with SIM swap (43.4% recall) - mixed signals from isolated nodes")
+            weaknesses.append(
+                f"❌ Struggles with SIM swap ({topology_results['mule_sim_swap']['recall']:.1%} recall) - mixed signals from isolated nodes"
+            )
         if topology_results.get("fast_cashout", {}).get("recall", 0) < 0.85:
-            weaknesses.append("❌ Weaker on velocity patterns (81% recall) - lacks timestamp signals")
+            weaknesses.append(
+                f"❌ Weaker on velocity patterns ({topology_results['fast_cashout']['recall']:.1%} recall) - lacks timestamp signals"
+            )
             
     elif model_type == "stacked_hybrid":
         if sum([topology_results.get(fraud, {}).get("recall", 0) for fraud in topology_results]) / max(len(topology_results), 1) > 0.85:
@@ -1315,7 +1331,8 @@ async def ai_explain_model(model_type: str):
         if model_type not in {"xgboost", "gnn", "stacked_hybrid"}:
             raise HTTPException(status_code=404, detail=f"Model {model_type} not found")
 
-        live_metrics = compute_live_metrics_for_model(model_type)
+        live_run = await run_model_evaluation(model_type)
+        live_metrics = live_run.get("metrics", {})
         metrics = live_metrics.get("overall_metrics", {})
         topology_results = {
             item["id"]: {
@@ -1328,6 +1345,7 @@ async def ai_explain_model(model_type: str):
 
         explanation = generate_model_explanation(model_type, metrics, topology_results)
         explanation["dataset"] = live_metrics.get("dataset", {})
+        explanation["script_status"] = live_run.get("script_status")
         return explanation
     except Exception as e:
         # Fallback: return explanation with note about execution failure
