@@ -8,6 +8,7 @@ export default function AIBot() {
   const [loading, setLoading] = useState(false);
   const [selectedTransaction, setSelectedTransaction] = useState(null);
   const [txExplanation, setTxExplanation] = useState(null);
+  const [txLoading, setTxLoading] = useState(false);
 
   // Fetch model explanation
   useEffect(() => {
@@ -23,10 +24,17 @@ export default function AIBot() {
       });
   }, [selectedModel]);
 
-  const handleExplainTransaction = (txId) => {
-    axios.get(`http://127.0.0.1:8000/ai-explain-transaction/${txId}`)
-      .then(res => setTxExplanation(res.data))
-      .catch(err => console.error('Error:', err));
+  const handleExplainTransaction = async (txId) => {
+    if (!txId) return;
+    setTxLoading(true);
+    try {
+      const res = await axios.get(`http://127.0.0.1:8000/ai-explain-transaction/${txId}?model=${selectedModel}`);
+      setTxExplanation(res.data);
+    } catch (err) {
+      console.error('Error:', err);
+    } finally {
+      setTxLoading(false);
+    }
   };
 
   return (
@@ -56,16 +64,16 @@ export default function AIBot() {
 
             <div className="p-4 space-y-2">
               {[
-                { value: 'xgboost', label: '🌳 XGBoost', color: 'orange' },
-                { value: 'gnn', label: '🔗 GNN', color: 'purple' },
-                { value: 'stacked_hybrid', label: '⚡ Stacked Hybrid', color: 'green' }
+                { value: 'xgboost', label: '🌳 XGBoost', activeClass: 'bg-orange-100 border-2 border-orange-500 text-orange-900' },
+                { value: 'gnn', label: '🔗 GNN', activeClass: 'bg-purple-100 border-2 border-purple-500 text-purple-900' },
+                { value: 'stacked_hybrid', label: '⚡ Stacked Hybrid', activeClass: 'bg-green-100 border-2 border-green-500 text-green-900' }
               ].map(model => (
                 <button
                   key={model.value}
                   onClick={() => setSelectedModel(model.value)}
                   className={`w-full p-3 rounded-lg text-left font-medium transition-all ${
                     selectedModel === model.value
-                      ? `bg-${model.color}-100 border-2 border-${model.color}-500 text-${model.color}-900`
+                      ? model.activeClass
                       : 'bg-gray-50 border border-gray-200 text-gray-700 hover:bg-gray-100'
                   }`}
                 >
@@ -185,11 +193,18 @@ export default function AIBot() {
           </div>
         </div>
 
+        {txLoading && <div className="text-sm text-gray-500">Explaining transaction...</div>}
+
         {txExplanation && (
           <div className="space-y-4">
             <div className="bg-yellow-50 border border-yellow-200 p-4 rounded-lg">
-              <p className="text-sm font-semibold text-gray-900 mb-2">Why was this flagged?</p>
-              <p className="text-sm text-gray-700">{txExplanation.why_flagged}</p>
+              <p className="text-sm font-semibold text-gray-900 mb-2">What the transaction entails</p>
+              <p className="text-sm text-gray-700">{txExplanation.what_transaction_entails || txExplanation.summary}</p>
+            </div>
+
+            <div className="bg-purple-50 border border-purple-200 p-4 rounded-lg">
+              <p className="text-sm font-semibold text-gray-900 mb-2">How the selected model interpreted it</p>
+              <p className="text-sm text-gray-700">{txExplanation.model_interpretation || txExplanation.why_flagged}</p>
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
@@ -212,7 +227,15 @@ export default function AIBot() {
 
             <div className="bg-green-50 border border-green-200 p-4 rounded-lg">
               <p className="text-sm font-semibold text-gray-900 mb-2">Action Recommended</p>
-              <p className="text-sm text-gray-700">{txExplanation.next_steps}</p>
+              {Array.isArray(txExplanation.recommended_actions || txExplanation.next_steps) ? (
+                <ul className="space-y-1 text-sm text-gray-700">
+                  {(txExplanation.recommended_actions || txExplanation.next_steps).map((step, idx) => (
+                    <li key={idx}>• {step}</li>
+                  ))}
+                </ul>
+              ) : (
+                <p className="text-sm text-gray-700">{txExplanation.recommended_actions || txExplanation.next_steps}</p>
+              )}
             </div>
           </div>
         )}
