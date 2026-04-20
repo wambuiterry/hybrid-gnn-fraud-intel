@@ -1,41 +1,84 @@
 import { useState, useRef, useEffect } from 'react';
 import ForceGraph2D from 'react-force-graph-2d';
 import axios from 'axios';
-import { Network, Users, MousePointer2, ShieldAlert, Activity } from 'lucide-react';
+import { Network, MousePointer2, ShieldAlert, Activity, AlertCircle } from 'lucide-react';
 
 export default function FraudNetwork() {
-  const containerRef = useRef(null);
-  const [dimensions, setDimensions] = useState({ width: 800, height: 500 });
+  const baselineContainerRef = useRef(null);
+  const liveContainerRef = useRef(null);
+  const [dimensions, setDimensions] = useState({ width: 600, height: 600 });
   const [selectedNode, setSelectedNode] = useState(null);
+  const [selectedRelationship, setSelectedRelationship] = useState(null);
   const [activeCase, setActiveCase] = useState(1);
   
-  // State for live data
+  // State for live data with animations
   const [liveData, setLiveData] = useState({ nodes: [], links: [] });
+  const [animatingEdges, setAnimatingEdges] = useState(new Set());
   const [loadingLive, setLoadingLive] = useState(false);
 
   useEffect(() => {
-    if (containerRef.current) {
-      setDimensions({
-        width: containerRef.current.offsetWidth,
-        height: containerRef.current.offsetHeight
-      });
-    }
+    const updateDimensions = () => {
+      if (baselineContainerRef.current && liveContainerRef.current) {
+        const baselineWidth = baselineContainerRef.current.clientWidth;
+        const liveWidth = liveContainerRef.current.clientWidth;
+        const baselineHeight = baselineContainerRef.current.clientHeight;
+        const liveHeight = liveContainerRef.current.clientHeight;
+        
+        // Use actual rendered dimensions
+        const width = Math.max(baselineWidth, liveWidth, 400);
+        const height = Math.max(baselineHeight, liveHeight, 500);
+        
+        setDimensions({ width, height });
+      }
+    };
+
+    // Initial calculation
+    updateDimensions();
+
+    // Recalculate on window resize
+    const resizeObserver = new ResizeObserver(updateDimensions);
+    if (baselineContainerRef.current) resizeObserver.observe(baselineContainerRef.current);
+    if (liveContainerRef.current) resizeObserver.observe(liveContainerRef.current);
+
+    return () => resizeObserver.disconnect();
   }, [activeCase]);
 
-  // Fetch Live Neo4j Data when "Live" is clicked
+  // Fetch Live Neo4j Data and set up pulse animations
   useEffect(() => {
-    if (activeCase === 'LIVE') {
-      setLoadingLive(true);
-      axios.get('http://127.0.0.1:8000/live-graph')
-        .then(res => {
-          setLiveData(res.data);
-          setLoadingLive(false);
-        })
-        .catch(err => {
-          console.error(err);
-          setLoadingLive(false);
-        });
-    }
+    setLoadingLive(true);
+    axios.get('http://127.0.0.1:8000/live-graph')
+      .then(res => {
+        const data = res.data;
+        // Add animation property to edges
+        const animatedLinks = data.links ? data.links.map((link, idx) => ({
+          ...link,
+          animatedIn: idx % 3 === 0 // Stagger animations
+        })) : [];
+        
+        setLiveData({ nodes: data.nodes || [], links: animatedLinks });
+        
+        // Simulate pulse animations on edges
+        if (animatedLinks.length > 0) {
+          const animatingSet = new Set();
+          animatedLinks.forEach((link, idx) => {
+            setTimeout(() => {
+              animatingSet.add(idx);
+              setAnimatingEdges(new Set(animatingSet));
+              
+              setTimeout(() => {
+                animatingSet.delete(idx);
+                setAnimatingEdges(new Set(animatingSet));
+              }, 1000);
+            }, idx * 500);
+          });
+        }
+        
+        setLoadingLive(false);
+      })
+      .catch(err => {
+        console.error(err);
+        setLoadingLive(false);
+      });
   }, [activeCase]);
 
   const caseStudies = {
@@ -167,7 +210,7 @@ export default function FraudNetwork() {
       node.group === 'mule' ? '#f59e0b' :    
       node.group === 'agent' ? '#8b5cf6' :   
       node.group === 'till' ? '#10b981' :    
-      node.group === 'live_user' ? '#0ea5e9' :
+      node.group === 'victim' ? '#06b6d4' :
       '#3b82f6';                             
     ctx.fill();
     
@@ -177,107 +220,171 @@ export default function FraudNetwork() {
     ctx.fillText(label, node.x, node.y + (node.val / 2) + 6);
   };
 
-  const getLinkColor = (link) => {
+  const getLinkColor = (link, isAnimating = false) => {
+    if (isAnimating) return '#ff6b6b'; // Bright red for animating edges
     if (link.risk === 'high') return '#ef4444'; 
     if (link.risk === 'medium') return '#f59e0b'; 
     return '#9ca3af'; 
   };
 
   return (
-    <div className="max-w-7xl mx-auto h-[calc(100vh-8rem)] flex flex-col">
-      <div className="mb-6 flex justify-between items-end">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900">Fraud Network Visualization</h1>
-          <p className="text-gray-500">Stacked Hybrid Topology Analysis</p>
+    <div className="h-screen flex flex-col bg-gray-50">
+      {/* Header with Case Selector */}
+      <div className="px-6 pt-6 pb-4 bg-white border-b border-gray-200 shadow-sm">
+        <div className="flex justify-between items-center mb-4">
+          <div>
+            <h1 className="text-3xl font-bold text-gray-900 flex items-center gap-3">
+              <Network className="text-brandPrimary" size={32} />
+              Fraud Network Visualization
+            </h1>
+            <p className="text-gray-500 text-sm mt-1">Baseline vs Live Activity Analysis</p>
+          </div>
+          
+          <div className="flex gap-2 flex-wrap justify-end">
+            {[1, 2, 3, 4, 5].map(num => (
+              <button 
+                key={num}
+                onClick={() => { setSelectedNode(null); setSelectedRelationship(null); setActiveCase(num); }}
+                className={`px-4 py-2 rounded-lg font-bold text-sm transition-colors whitespace-nowrap ${
+                  activeCase === num ? 'bg-brandPrimary text-white shadow-md' : 'bg-white text-gray-600 border border-gray-200 hover:bg-gray-50'
+                }`}
+              >
+                Case {num}
+              </button>
+            ))}
+          </div>
         </div>
+
+        {/* Case Description */}
+        <div className={`border p-4 rounded-lg flex items-start gap-3 ${
+          liveData.nodes.length > 0 ? 'bg-blue-50 border-blue-200' : 'bg-indigo-50 border-indigo-100'
+        }`}>
+          <ShieldAlert className={`${liveData.nodes.length > 0 ? 'text-blue-600' : 'text-brandPrimary'} shrink-0 mt-0.5`} size={20} />
+          <div>
+            <h3 className="font-bold text-gray-900 text-sm">{caseStudies[activeCase].title}</h3>
+            <p className="text-sm text-gray-700 mt-1">{caseStudies[activeCase].description}</p>
+          </div>
+        </div>
+      </div>
+
+      {/* Split View: Baseline & Live Graphs - Full Height */}
+      <div className="flex-1 flex gap-4 p-6 overflow-hidden">
         
-        <div className="flex gap-2">
-          {[1, 2, 3, 4, 5].map(num => (
-            <button 
-              key={num}
-              onClick={() => { setSelectedNode(null); setActiveCase(num); }}
-              className={`px-4 py-2 rounded-lg font-bold text-sm transition-colors ${
-                activeCase === num ? 'bg-brandPrimary text-white shadow-md' : 'bg-white text-gray-600 border border-gray-200 hover:bg-gray-50'
-              }`}
-            >
-              Case {num}
-            </button>
-          ))}
-          <button 
-              onClick={() => { setSelectedNode(null); setActiveCase('LIVE'); }}
-              className={`px-4 py-2 flex items-center gap-2 rounded-lg font-bold text-sm transition-colors ${
-                activeCase === 'LIVE' ? 'bg-green-600 text-white shadow-md' : 'bg-white text-green-700 border border-green-200 hover:bg-green-50'
-              }`}
-            >
-              <Activity size={16} className={activeCase === 'LIVE' ? "animate-pulse" : ""} /> Live Data
-            </button>
+        {/* LEFT: Baseline Graph (Static) */}
+        <div className="flex-1 flex flex-col bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+          <div className="px-4 py-3 bg-gradient-to-r from-gray-50 to-gray-100 border-b border-gray-200 flex items-center justify-between">
+            <h3 className="font-bold text-gray-800 text-sm">BASELINE</h3>
+            <span className="text-xs text-gray-500">Theoretical Pattern</span>
+          </div>
+          <div 
+            ref={baselineContainerRef} 
+            className="flex-1 cursor-grab active:cursor-grabbing overflow-hidden bg-gray-50 relative"
+          >
+            {dimensions.width > 50 && caseStudies[activeCase].data.nodes.length > 0 && (
+              <ForceGraph2D
+                width={dimensions.width}
+                height={dimensions.height}
+                graphData={caseStudies[activeCase].data}
+                nodeCanvasObject={drawNode}
+                linkColor={(link) => getLinkColor(link, false)}
+                linkDirectionalArrowLength={3.5}
+                linkDirectionalArrowRelPos={1}
+                linkWidth={link => link.risk === 'high' ? 2 : 1}
+                onNodeClick={node => {
+                  setSelectedNode(node);
+                  setSelectedRelationship(null);
+                }}
+                onLinkClick={(link) => {
+                  setSelectedRelationship(link);
+                  setSelectedNode(null);
+                }}
+                cooldownTicks={100}
+              />
+            )}
+          </div>
         </div>
-      </div>
 
-      <div className={`border p-4 rounded-t-xl flex items-start gap-3 ${activeCase === 'LIVE' ? 'bg-green-50 border-green-200' : 'bg-indigo-50 border-indigo-100'}`}>
-        <ShieldAlert className={`${activeCase === 'LIVE' ? 'text-green-600' : 'text-brandPrimary'} shrink-0 mt-0.5`} size={20} />
-        <div>
-          <h3 className="font-bold text-gray-900 text-sm">{currentGraph.title}</h3>
-          <p className="text-sm text-gray-700 mt-1">{currentGraph.description}</p>
-        </div>
-      </div>
-
-      <div className="flex-1 flex gap-6 bg-white p-6 rounded-b-xl border border-gray-200 shadow-sm overflow-hidden">
-        <div ref={containerRef} className="flex-1 border-2 border-dashed border-gray-200 rounded-xl bg-gray-50 cursor-grab active:cursor-grabbing overflow-hidden relative">
-          {loadingLive && (
-            <div className="absolute inset-0 flex items-center justify-center bg-white/80 z-10">
-              <p className="font-bold text-brandPrimary animate-pulse">Querying Neo4j Database...</p>
+        {/* RIGHT: Live Activity Graph (Animated) */}
+        <div className="flex-1 flex flex-col bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+          <div className="px-4 py-3 bg-gradient-to-r from-green-50 to-green-100 border-b border-green-200 flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <h3 className="font-bold text-gray-800 text-sm">LIVE ACTIVITY</h3>
+              {liveData.nodes.length > 0 && <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>}
             </div>
-          )}
-          {dimensions.width > 0 && currentGraph.data.nodes.length > 0 && (
-            <ForceGraph2D
-              width={dimensions.width}
-              height={dimensions.height}
-              graphData={currentGraph.data}
-              nodeCanvasObject={drawNode}
-              linkColor={getLinkColor}
-              linkDirectionalArrowLength={3.5}
-              linkDirectionalArrowRelPos={1}
-              linkWidth={link => link.risk === 'high' ? 2 : 1}
-              onNodeClick={node => setSelectedNode(node)}
-              cooldownTicks={100}
-            />
-          )}
-          {activeCase === 'LIVE' && currentGraph.data.nodes.length === 0 && !loadingLive && (
-            <div className="absolute inset-0 flex items-center justify-center">
-              <p className="text-gray-500">No live transactions in Neo4j yet. Run a simulation!</p>
-            </div>
-          )}
-        </div>
-
-        <div className="w-80 flex flex-col gap-6">
-          <div className="border border-gray-200 rounded-xl p-5 bg-gray-50 flex-1">
-            <h3 className="font-bold text-gray-800 border-b border-gray-200 pb-3 mb-4 flex items-center gap-2">
-              <MousePointer2 size={18} className="text-brandPrimary" /> 
-              Node Intelligence
-            </h3>
-            {selectedNode ? (
-              <div className="space-y-4">
-                <div>
-                  <p className="text-xs text-gray-500 uppercase tracking-wider font-bold mb-1">Entity ID</p>
-                  <p className="font-mono text-gray-900 font-medium bg-white px-3 py-2 border rounded-md">{selectedNode.id}</p>
-                </div>
-                <div>
-                  <p className="text-xs text-gray-500 uppercase tracking-wider font-bold mb-1">Graph Classification</p>
-                  <span className="px-3 py-1 bg-gray-200 rounded-full text-xs font-bold text-gray-700 capitalize">
-                    {selectedNode.group.replace('_', ' ')}
-                  </span>
-                </div>
+            <span className="text-xs text-gray-500">{liveData.nodes.length} nodes | {liveData.links.length} edges</span>
+          </div>
+          <div 
+            ref={liveContainerRef} 
+            className="flex-1 cursor-grab active:cursor-grabbing overflow-hidden bg-green-50 relative"
+          >
+            {loadingLive && (
+              <div className="absolute inset-0 flex items-center justify-center bg-white/80 z-10">
+                <p className="font-bold text-green-600 animate-pulse">Pulling live transactions...</p>
               </div>
-            ) : (
-              <div className="h-full flex flex-col items-center justify-center text-gray-400">
-                <Network size={40} className="mb-3 opacity-50" />
-                <p className="text-sm text-center px-4">Click a node to inspect its graph embeddings.</p>
+            )}
+            {dimensions.width > 50 && liveData.nodes.length > 0 && (
+              <ForceGraph2D
+                width={dimensions.width}
+                height={dimensions.height}
+                graphData={liveData}
+                nodeCanvasObject={drawNode}
+                linkColor={(link, idx) => {
+                  const isAnimating = animatingEdges.has(liveData.links.indexOf(link));
+                  return getLinkColor(link, isAnimating);
+                }}
+                linkDirectionalArrowLength={3.5}
+                linkDirectionalArrowRelPos={1}
+                linkWidth={(link) => {
+                  const isAnimating = animatingEdges.has(liveData.links.indexOf(link));
+                  return isAnimating ? 4 : (link.risk === 'high' ? 2 : 1);
+                }}
+                onNodeClick={node => {
+                  setSelectedNode(node);
+                  setSelectedRelationship(null);
+                }}
+                onLinkClick={(link) => {
+                  setSelectedRelationship(link);
+                  setSelectedNode(null);
+                }}
+                cooldownTicks={100}
+              />
+            )}
+            {liveData.nodes.length === 0 && !loadingLive && (
+              <div className="absolute inset-0 flex items-center justify-center">
+                <AlertCircle size={40} className="text-gray-300 mb-3" />
               </div>
             )}
           </div>
         </div>
       </div>
+
+      {/* Selected Node/Relationship Info Bar - Bottom */}
+      {(selectedNode || selectedRelationship) && (
+        <div className="px-6 py-4 bg-blue-50 border-t border-blue-200">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm font-bold text-gray-900 flex items-center gap-2">
+                <MousePointer2 size={16} className="text-brandPrimary" />
+                {selectedNode ? `Node: ${selectedNode.id}` : selectedRelationship ? `Edge: ${selectedRelationship.source} → ${selectedRelationship.target}` : 'Selection'}
+              </p>
+            </div>
+            {selectedNode && (
+              <span className="px-3 py-1 bg-indigo-100 rounded-full text-xs font-bold text-brandPrimary capitalize">
+                {selectedNode.group.replace('_', ' ')}
+              </span>
+            )}
+            {selectedRelationship && (
+              <span className={`px-3 py-1 rounded-full text-xs font-bold capitalize ${
+                selectedRelationship.risk === 'high' ? 'bg-red-100 text-red-700' :
+                selectedRelationship.risk === 'medium' ? 'bg-yellow-100 text-yellow-700' :
+                'bg-green-100 text-green-700'
+              }`}>
+                Risk: {selectedRelationship.risk}
+              </span>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
